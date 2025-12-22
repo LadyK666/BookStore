@@ -1,0 +1,10 @@
+{
+    // 使用 JDK 21
+    "java.home": "D:\\OpenJDK21U-jdk_x64_windows_hotspot_21.0.7_6\\jdk-21.0.7+6",
+
+    // Maven 使用 JAVA_HOME 指定的 JDK
+    "maven.terminal.useJavaHome": true,
+
+    // Maven 可执行文件路径
+    "maven.executable.path": "D:\\apache-maven-3.9.10-bin\\apache-maven-3.9.10\\bin\\mvn.cmd"
+}

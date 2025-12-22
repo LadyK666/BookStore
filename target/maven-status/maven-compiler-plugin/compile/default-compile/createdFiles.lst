@@ -1,0 +1,6 @@
+com\bookstore\web\controller\AuthController$AdminLoginResp.class
+com\bookstore\web\dto\LoginRequest.class
+com\bookstore\web\controller\AuthController.class
+com\bookstore\web\controller\AuthController$CustomerLoginResp.class
+com\bookstore\web\controller\AuthController$ErrorResp.class
+com\bookstore\web\controller\AuthController$RegisterRequest.class
