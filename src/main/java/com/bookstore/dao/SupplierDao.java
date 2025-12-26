@@ -69,6 +69,37 @@ public class SupplierDao {
         }
     }
 
+    /**
+     * 更新供应商信息
+     */
+    public int update(Supplier s) throws SQLException {
+        String sql = "UPDATE supplier SET supplier_name = ?, contact_person = ?, phone = ?, email = ?, address = ?, payment_terms = ?, cooperation_status = ? WHERE supplier_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, s.getSupplierName());
+            ps.setString(2, s.getContactPerson());
+            ps.setString(3, s.getPhone());
+            ps.setString(4, s.getEmail());
+            ps.setString(5, s.getAddress());
+            ps.setString(6, s.getPaymentTerms());
+            ps.setString(7, s.getCooperationStatus());
+            ps.setLong(8, s.getSupplierId());
+            return ps.executeUpdate();
+        }
+    }
+
+    /**
+     * 删除供应商
+     */
+    public int delete(long supplierId) throws SQLException {
+        String sql = "DELETE FROM supplier WHERE supplier_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, supplierId);
+            return ps.executeUpdate();
+        }
+    }
+
     private Supplier mapRow(ResultSet rs) throws SQLException {
         Supplier s = new Supplier();
         s.setSupplierId(rs.getLong("supplier_id"));

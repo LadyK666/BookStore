@@ -18,10 +18,11 @@ public class CustomerOutOfStockRequestDao {
      */
     public long insert(CustomerOutOfStockRequest req) throws SQLException {
         String sql = "INSERT INTO customer_out_of_stock_request " +
-                "(order_id, customer_id, book_id, requested_qty, customer_note, is_paid, processed_status, related_record_id, customer_notified, created_at, processed_at) " +
+                "(order_id, customer_id, book_id, requested_qty, customer_note, is_paid, processed_status, related_record_id, customer_notified, created_at, processed_at) "
+                +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, req.getOrderId());
             ps.setLong(2, req.getCustomerId());
             ps.setString(3, req.getBookId());
@@ -60,8 +61,8 @@ public class CustomerOutOfStockRequestDao {
                 "WHERE processed_status = 'PENDING' AND is_paid = 0 ORDER BY created_at ASC";
         List<CustomerOutOfStockRequest> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 list.add(mapRow(rs));
             }
@@ -77,7 +78,7 @@ public class CustomerOutOfStockRequestDao {
                 "WHERE processed_status = 'PENDING' AND order_id = ? ORDER BY created_at ASC";
         List<CustomerOutOfStockRequest> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, orderId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -95,7 +96,7 @@ public class CustomerOutOfStockRequestDao {
         String sql = "UPDATE customer_out_of_stock_request " +
                 "SET processed_status = ?, related_record_id = ?, processed_at = ? WHERE request_id = ?";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, newStatus);
             if (relatedRecordId != null) {
                 ps.setLong(2, relatedRecordId);
@@ -117,7 +118,7 @@ public class CustomerOutOfStockRequestDao {
                 "AND customer_notified = 0 ORDER BY created_at ASC";
         List<CustomerOutOfStockRequest> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, customerId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -137,8 +138,28 @@ public class CustomerOutOfStockRequestDao {
                 "ORDER BY created_at DESC";
         List<CustomerOutOfStockRequest> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, customerId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 查询等待指定书籍的顾客缺书登记（已付款，已被管理员接受）。
+     * 用于采购到货后通知顾客。
+     */
+    public List<CustomerOutOfStockRequest> findAcceptedPaidByBookId(String bookId) throws SQLException {
+        String sql = "SELECT * FROM customer_out_of_stock_request " +
+                "WHERE book_id = ? AND processed_status = 'ACCEPTED' AND is_paid = 1 ORDER BY created_at ASC";
+        List<CustomerOutOfStockRequest> list = new ArrayList<>();
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, bookId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     list.add(mapRow(rs));
@@ -155,15 +176,17 @@ public class CustomerOutOfStockRequestDao {
         if (requestIds == null || requestIds.isEmpty()) {
             return 0;
         }
-        StringBuilder sb = new StringBuilder("UPDATE customer_out_of_stock_request SET customer_notified = 1 WHERE request_id IN (");
+        StringBuilder sb = new StringBuilder(
+                "UPDATE customer_out_of_stock_request SET customer_notified = 1 WHERE request_id IN (");
         for (int i = 0; i < requestIds.size(); i++) {
-            if (i > 0) sb.append(',');
+            if (i > 0)
+                sb.append(',');
             sb.append('?');
         }
         sb.append(')');
         String sql = sb.toString();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             for (int i = 0; i < requestIds.size(); i++) {
                 ps.setLong(i + 1, requestIds.get(i));
             }
@@ -198,5 +221,3 @@ public class CustomerOutOfStockRequestDao {
         return r;
     }
 }
-
-

@@ -5,19 +5,607 @@ body,
   padding: 0;
   width: 100%;
   height: 100%;
+  overflow-x: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
-  background: radial-gradient(circle at top left, #667eea 0, #764ba2 35%, #1f1c2c 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #ffffff;
+  color: #334155;
+  /* Slate-700 for softer text */
 }
 
+/* === Light & Airy Mesh Background (Admin) === */
+.mesh-background {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  /* Extremely subtle, almost white gradient */
+  background: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+  background-size: 100% 100%;
+}
+
+/* === Login Page Gradient Background === */
 .full-page-gradient {
   min-height: 100vh;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7);
+  background-size: 400% 400%;
+  animation: gradientFlow 15s ease infinite;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Floating Particles Layer */
+.full-page-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(255, 255, 255, 0.4) 50%, transparent 50%),
+    radial-gradient(3px 3px at 40% 70%, rgba(255, 255, 255, 0.3) 50%, transparent 50%),
+    radial-gradient(2px 2px at 60% 20%, rgba(255, 255, 255, 0.35) 50%, transparent 50%),
+    radial-gradient(3px 3px at 80% 50%, rgba(255, 255, 255, 0.25) 50%, transparent 50%),
+    radial-gradient(2px 2px at 10% 80%, rgba(255, 255, 255, 0.4) 50%, transparent 50%),
+    radial-gradient(3px 3px at 90% 10%, rgba(255, 255, 255, 0.3) 50%, transparent 50%),
+    radial-gradient(2px 2px at 50% 50%, rgba(255, 255, 255, 0.2) 50%, transparent 50%);
+  animation: particleFloat 20s linear infinite;
+  pointer-events: none;
+}
 
+@keyframes particleFloat {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-50px) rotate(180deg);
+  }
+
+  100% {
+    transform: translateY(0) rotate(360deg);
+  }
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Customer Banner Animated Gradient */
+.animated-banner {
+  background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7) !important;
+  background-size: 400% 400% !important;
+  animation: gradientFlow 15s ease infinite;
+}
+
+/* ========= PREMIUM VISUAL EFFECTS ========= */
+
+/* Liquid Glass Effect - Ultra Modern */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 -20px 40px rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquid-glass:hover {
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+    inset 0 -20px 40px rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Aurora Glow Effect */
+@keyframes auroraShift {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  25% {
+    background-position: 100% 50%;
+  }
+
+  50% {
+    background-position: 100% 0%;
+  }
+
+  75% {
+    background-position: 0% 100%;
+  }
+}
+
+.aurora-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.aurora-glow::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg,
+      rgba(99, 102, 241, 0.1) 0%,
+      rgba(139, 92, 246, 0.1) 25%,
+      rgba(59, 130, 246, 0.1) 50%,
+      rgba(6, 182, 212, 0.1) 75%,
+      rgba(99, 102, 241, 0.1) 100%);
+  background-size: 400% 400%;
+  animation: auroraShift 20s ease infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aurora-glow>* {
+  position: relative;
+  z-index: 1;
+}
+
+/* Shimmer Effect for Cards */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.4) 50%,
+      transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.shimmer-card:hover::after {
+  opacity: 1;
+}
+
+/* Neon Glow Button */
+.neon-btn {
+  position: relative;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s ease;
+}
+
+.neon-btn:hover {
+  box-shadow:
+    0 6px 20px rgba(102, 126, 234, 0.5),
+    0 0 40px rgba(102, 126, 234, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Depth Card - Multiple Layers */
+.depth-card {
+  background: linear-gradient(145deg, #ffffff, #f0f0f0);
+  box-shadow:
+    5px 5px 15px rgba(0, 0, 0, 0.05),
+    -5px -5px 15px rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.depth-card:hover {
+  box-shadow:
+    8px 8px 20px rgba(0, 0, 0, 0.08),
+    -8px -8px 20px rgba(255, 255, 255, 0.9);
+}
+
+/* Login Page Animations */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulseGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  50% {
+    box-shadow: 0 8px 24px rgba(118, 75, 162, 0.4);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+/* 3D Card Tilt Effect */
+.login-card-3d {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-card-3d:hover {
+  transform: rotateY(-5deg) rotateX(5deg) translateZ(10px);
+  box-shadow:
+    20px 20px 60px rgba(0, 0, 0, 0.15),
+    -5px -5px 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Glowing Input Focus */
+.login-input-glow .ant-input {
+  border: 2px solid transparent !important;
+  background: linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(135deg, #e0e0e0, #f0f0f0) border-box;
+  transition: all 0.3s ease;
+}
+
+.login-input-glow .ant-input-affix-wrapper {
+  border: 2px solid transparent !important;
+  background: linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(135deg, #e0e0e0, #f0f0f0) border-box;
+  transition: all 0.3s ease;
+}
+
+.login-input-glow .ant-input-affix-wrapper .ant-input {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.login-input-glow .ant-input:focus,
+.login-input-glow .ant-input-affix-wrapper:focus,
+.login-input-glow .ant-input-affix-wrapper-focused {
+  background: linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(135deg, #667eea, #764ba2) border-box !important;
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.3) !important;
+}
+
+/* Stat Card Hover */
+.stat-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  background: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* Centered layout for Login Page */
+.page-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* === Airy Glass Cards === */
+.glass-card {
+  background: rgba(255, 255, 255, 0.9);
+  /* Higher opacity for cleaner look */
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 1);
+  /* Very soft, diffused shadow */
+  box-shadow:
+    0 10px 40px -10px rgba(0, 0, 0, 0.05),
+    0 2px 10px -2px rgba(0, 0, 0, 0.02);
+  border-radius: 20px;
+  /* More rounded */
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 20px 40px -10px rgba(0, 0, 0, 0.08),
+    0 4px 12px -2px rgba(0, 0, 0, 0.04);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid #f1f5f9;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+/* === View Transitions === */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-view-transition {
+  animation: fadeInUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* === Enhanced Table Styling (Cleaner) === */
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+
+.ant-table-wrapper .ant-table-thead>tr>th {
+  background: rgba(241, 250, 252, 0.6) !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  border-bottom: 2px solid #f1f5f9 !important;
+  padding: 16px 16px !important;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr>td {
+  padding: 20px 24px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  color: #334155;
+  font-size: 14px;
+  background: #fff;
+  transition: all 0.2s ease;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr:hover>td {
+  background: #f8fafc !important;
+}
+
+/* Rounded corners for table rows */
+.ant-table-wrapper .ant-table-tbody>tr:first-child>td:first-child {
+  border-top-left-radius: 12px;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr:first-child>td:last-child {
+  border-top-right-radius: 12px;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr:last-child>td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+.ant-table-wrapper .ant-table-tbody>tr:last-child>td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
+/* Card Enhancements */
+.ant-card {
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
+  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.85) !important;
+  transition: all 0.3s ease;
+}
+
+/* Book List Grid - Ensure consistent card heights */
+.ant-list-grid .ant-list-item {
+  display: flex;
+  height: 100%;
+}
+
+.ant-list-grid .ant-list-item > * {
+  height: 100%;
+  width: 100%;
+}
+
+/* Ensure Card.Meta fills available space in book cards */
+.ant-list-grid .ant-card-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ant-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.06) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6) !important;
+  padding: 0 24px !important;
+  min-height: 64px;
+}
+
+.ant-card-head-title {
+  padding: 24px 0 !important;
+  font-size: 16px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ant-card-body {
+  padding: 24px !important;
+}
+
+/* === Enhanced Tags (Pastel) === */
+.ant-tag {
+  border: none !important;
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 4px 12px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.ant-tag:hover {
+  transform: translateY(-1px);
+}
+
+/* === Enhanced Buttons (Soft Blue) === */
+.ant-btn-primary {
+  /* Fresh Blue Gradient */
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border: none !important;
+  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2) !important;
+  font-weight: 600;
+  border-radius: 12px !important;
+  height: 36px;
+  padding: 4px 20px;
+  letter-spacing: 0.3px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35) !important;
+}
+
+.ant-btn-default {
+  border: 1px solid #e2e8f0 !important;
+  background: #fff !important;
+  border-radius: 10px !important;
+  color: #64748b !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.ant-btn-default:hover {
+  border-color: #3b82f6 !important;
+  color: #3b82f6 !important;
+  background: #eff6ff !important;
+}
+
+/* === Input Focus === */
+.ant-input {
+  border-radius: 8px;
+  border-color: #e2e8f0;
+  padding: 8px 12px;
+}
+
+.ant-input:focus,
+.ant-select-focused .ant-select-selector {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* === Sidebar Menu Enhancement (Minimalist) === */
+.ant-menu-inline .ant-menu-item {
+  margin: 4px 12px !important;
+  width: auto !important;
+  border-radius: 12px !important;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.ant-menu-inline .ant-menu-item:hover {
+  color: #3b82f6 !important;
+  background: #eff6ff !important;
+}
+
+.ant-menu-inline .ant-menu-item-selected {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  font-weight: 600;
+}
+
+/* Removed the left border line for a cleaner look */
+.ant-menu-inline .ant-menu-item-selected::after {
+  display: none !important;
+}
+
+/* === Text Gradients (Fresher) === */
+.text-gradient-indigo {
+  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+  /* Blue to Cyan */
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: -0.5px;
+}
+
+/* === Modal Enhancement === */
+.ant-modal-content {
+  border-radius: 24px !important;
+  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.ant-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}

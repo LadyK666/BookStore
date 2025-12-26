@@ -5,7 +5,9 @@ import com.bookstore.model.*;
 import com.bookstore.util.DBUtil;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -65,6 +67,12 @@ public class ShipmentService {
         if (!isPaid && !canShipWithoutPayment) {
             throw new IllegalStateException("订单状态不允许发货。当前状态: " + order.getOrderStatus() + 
                     "，您的信用等级（" + level.getLevelName() + "）必须先付款后发货");
+        }
+
+        // 检查是否已经有过发货记录（分次发货后不能再整单发货）
+        List<Shipment> existingShipments = shipmentDao.findByOrderId(orderId);
+        if (!existingShipments.isEmpty()) {
+            throw new IllegalStateException("该订单已经进行过分次发货，不能再进行整单发货。请继续使用分次发货功能完成剩余商品的发货。");
         }
 
         // 2. 查询订单明细
@@ -289,9 +297,12 @@ public class ShipmentService {
                 int newTotal = shippedSoFar + si.getShipQuantity();
                 String newStatus = newTotal >= oi.getQuantity() ? "SHIPPED" : "PART_SHIPPED";
                 salesOrderDao.updateItemProgress(oi.getOrderItemId(), si.getShipQuantity(), 0, newStatus);
+                // 更新itemMap中的值，以便后续检查
+                oi.setShippedQuantity(newTotal);
             }
 
-            // 订单状态：进入正在运输 DELIVERING，并记录发货时间
+            // 分次发货逻辑：只要分次发货一次，订单状态就变为DELIVERING（运输中）
+            // 这样顾客就能看到收货按钮，可以收货已发货的部分
             salesOrderDao.updateStatusAndDeliveryTime(shipment.getOrderId(), "DELIVERING", LocalDateTime.now());
 
             conn.commit();
@@ -308,10 +319,198 @@ public class ShipmentService {
     }
 
     /**
-     * 顾客确认收货（可分次收货）。receiveMap: orderItemId -> 本次确认的数量。
-     * 仅允许确认已发货但未收货的数量。
+     * 顾客确认收货（按子发货单收货）。
+     * 对于分次发货的订单，顾客按shipment（子发货）收货，只能收货状态为SHIPPED的shipment。
+     * 对于整体发货的订单，收货整个shipment。
+     * 
+     * @param orderId 订单ID
+     * @param shipmentId 要收货的发货单ID（子发货单）
      */
-    public void confirmReceipt(long orderId, Map<Long, Integer> receiveMap) throws SQLException {
+    public void confirmReceipt(long orderId, long shipmentId) throws SQLException {
+        SalesOrder order = salesOrderDao.findOrderById(orderId);
+        if (order == null) throw new IllegalArgumentException("订单不存在: " + orderId);
+        if (!"DELIVERING".equals(order.getOrderStatus()) && !"SHIPPED".equals(order.getOrderStatus())) {
+            throw new IllegalStateException("当前状态不允许确认收货: " + order.getOrderStatus());
+        }
+
+        // 查询要收货的shipment
+        List<Shipment> shipments = shipmentDao.findByOrderId(orderId);
+        Shipment targetShipment = null;
+        for (Shipment s : shipments) {
+            if (s.getShipmentId() == shipmentId) {
+                targetShipment = s;
+                break;
+            }
+        }
+        if (targetShipment == null) {
+            throw new IllegalArgumentException("发货单不存在或不属于该订单: " + shipmentId);
+        }
+
+        // 只能收货状态为SHIPPED的shipment
+        if (!"SHIPPED".equals(targetShipment.getShipmentStatus())) {
+            throw new IllegalStateException("只能收货状态为运送中的发货单，当前状态: " + targetShipment.getShipmentStatus());
+        }
+
+        // 获取该shipment的所有shipment_item
+        List<ShipmentItem> shipmentItems = shipmentDao.findItemsByShipmentId(shipmentId);
+        if (shipmentItems.isEmpty()) {
+            throw new IllegalStateException("发货单明细为空");
+        }
+
+        // 检查是否已经全部收货
+        for (ShipmentItem si : shipmentItems) {
+            int shipped = si.getShipQuantity();
+            int received = si.getReceivedQuantity() == null ? 0 : si.getReceivedQuantity();
+            if (received >= shipped) {
+                throw new IllegalStateException("该发货单已全部收货");
+            }
+        }
+
+        Connection conn = null;
+        try {
+            conn = DBUtil.getConnection();
+            conn.setAutoCommit(false);
+
+            // 先查询订单明细（在更新前获取原始数据，使用同一个连接）
+            List<SalesOrderItem> items = new ArrayList<>();
+            Map<Long, SalesOrderItem> itemMap = new HashMap<>();
+            String queryItemsSql = "SELECT order_item_id, order_id, book_id, quantity, shipped_quantity, received_quantity, unit_price, sub_amount, item_status " +
+                    "FROM sales_order_item WHERE order_id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(queryItemsSql)) {
+                ps.setLong(1, orderId);
+                try (var rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        SalesOrderItem item = new SalesOrderItem();
+                        item.setOrderItemId(rs.getLong("order_item_id"));
+                        item.setOrderId(rs.getLong("order_id"));
+                        item.setBookId(rs.getString("book_id"));
+                        item.setQuantity(rs.getInt("quantity"));
+                        item.setShippedQuantity(rs.getInt("shipped_quantity"));
+                        item.setReceivedQuantity(rs.getInt("received_quantity"));
+                        item.setUnitPrice(rs.getBigDecimal("unit_price"));
+                        item.setSubAmount(rs.getBigDecimal("sub_amount"));
+                        item.setItemStatus(rs.getString("item_status"));
+                        items.add(item);
+                        itemMap.put(item.getOrderItemId(), item);
+                    }
+                }
+            }
+
+            // 收货整个shipment：将所有shipment_item标记为已收货
+            Map<Long, Integer> orderItemReceiveMap = new HashMap<>(); // 用于更新订单明细
+            for (ShipmentItem si : shipmentItems) {
+                int shipped = si.getShipQuantity();
+                int received = si.getReceivedQuantity() == null ? 0 : si.getReceivedQuantity();
+                int remain = shipped - received;
+                if (remain > 0) {
+                    // 标记该shipment_item为已收货（使用同一个连接）
+                    String updateItemSql = "UPDATE shipment_item SET received_quantity = received_quantity + ?, " +
+                            "receive_status = ?, received_time = ? WHERE shipment_item_id = ?";
+                    try (PreparedStatement ps = conn.prepareStatement(updateItemSql)) {
+                        ps.setInt(1, remain);
+                        ps.setString(2, "RECEIVED");
+                        ps.setTimestamp(3, Timestamp.valueOf(java.time.LocalDateTime.now()));
+                        ps.setLong(4, si.getShipmentItemId());
+                        ps.executeUpdate();
+                    }
+                    // 累计每个orderItem的收货数量
+                    orderItemReceiveMap.merge(si.getOrderItemId(), remain, Integer::sum);
+                }
+            }
+
+            // 更新订单明细的收货进度（使用同一个连接）
+            for (Map.Entry<Long, Integer> entry : orderItemReceiveMap.entrySet()) {
+                SalesOrderItem oi = itemMap.get(entry.getKey());
+                if (oi == null) continue;
+                int oldReceived = oi.getReceivedQuantity() == null ? 0 : oi.getReceivedQuantity();
+                int newReceived = oldReceived + entry.getValue();
+                String status = newReceived >= oi.getQuantity() ? "RECEIVED" : "PART_SHIPPED";
+                
+                // 使用同一个连接更新
+                String updateProgressSql = "UPDATE sales_order_item SET received_quantity = received_quantity + ?, " +
+                        "item_status = ? WHERE order_item_id = ?";
+                try (PreparedStatement ps = conn.prepareStatement(updateProgressSql)) {
+                    ps.setInt(1, entry.getValue());
+                    ps.setString(2, status);
+                    ps.setLong(3, entry.getKey());
+                    ps.executeUpdate();
+                }
+                // 更新itemMap中的值，以便后续判断
+                oi.setReceivedQuantity(newReceived);
+            }
+
+            // 更新shipment状态为DELIVERED（使用同一个连接）
+            String updateShipmentSql = "UPDATE shipment SET shipment_status = ? WHERE shipment_id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(updateShipmentSql)) {
+                ps.setString(1, "DELIVERED");
+                ps.setLong(2, shipmentId);
+                ps.executeUpdate();
+            }
+
+            // 判断整单是否收货完成（使用更新后的items数据）
+            boolean allReceived = true;
+            for (SalesOrderItem oi : items) {
+                int received = oi.getReceivedQuantity() == null ? 0 : oi.getReceivedQuantity();
+                if (received < oi.getQuantity()) {
+                    allReceived = false;
+                    break;
+                }
+            }
+            
+            // 检查订单是否已付款（查询payment_time）
+            boolean isPaid = false;
+            String checkPaymentSql = "SELECT payment_time FROM sales_order WHERE order_id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(checkPaymentSql)) {
+                ps.setLong(1, orderId);
+                try (var rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        java.sql.Timestamp paymentTime = rs.getTimestamp("payment_time");
+                        isPaid = (paymentTime != null);
+                    }
+                }
+            }
+            
+            // 更新订单状态（使用同一个连接）
+            // 如果收货完成但未付款，状态保持PENDING_PAYMENT；如果已付款且收货完成，状态为COMPLETED
+            String newStatus;
+            if (allReceived) {
+                if (isPaid) {
+                    newStatus = "COMPLETED";
+                } else {
+                    // 收货完成但未付款，保持待付款状态
+                    newStatus = "PENDING_PAYMENT";
+                }
+            } else {
+                // 未全部收货，保持配送中状态
+                newStatus = "DELIVERING";
+            }
+            
+            String updateOrderSql = "UPDATE sales_order SET order_status = ? WHERE order_id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(updateOrderSql)) {
+                ps.setString(1, newStatus);
+                ps.setLong(2, orderId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+        } catch (SQLException e) {
+            if (conn != null) conn.rollback();
+            throw e;
+        } finally {
+            if (conn != null) {
+                conn.setAutoCommit(true);
+                conn.close();
+            }
+        }
+    }
+
+    /**
+     * 旧版确认收货方法（保持兼容性，但建议使用新方法）。
+     * 对于整体发货的订单，可以调用此方法直接确认收货全部。
+     * @deprecated 建议使用 confirmReceipt(long orderId, long shipmentId)
+     */
+    @Deprecated
+    public void confirmReceiptByItems(long orderId, Map<Long, Integer> receiveMap) throws SQLException {
         if (receiveMap == null || receiveMap.isEmpty()) {
             throw new IllegalArgumentException("收货数量不能为空");
         }
@@ -322,6 +521,15 @@ public class ShipmentService {
             throw new IllegalStateException("当前状态不允许确认收货: " + order.getOrderStatus());
         }
 
+        // 检查是否是整体发货（只有一个shipment）
+        List<Shipment> shipments = shipmentDao.findByOrderId(orderId);
+        if (shipments.size() == 1) {
+            // 整体发货，直接收货整个shipment
+            confirmReceipt(orderId, shipments.get(0).getShipmentId());
+            return;
+        }
+
+        // 否则使用旧逻辑（为了兼容）
         List<SalesOrderItem> items = salesOrderDao.findItemsByOrderId(orderId);
         Map<Long, SalesOrderItem> itemMap = new HashMap<>();
         for (SalesOrderItem it : items) itemMap.put(it.getOrderItemId(), it);
@@ -331,7 +539,6 @@ public class ShipmentService {
             SalesOrderItem oi = itemMap.get(entry.getKey());
             if (oi == null) throw new IllegalArgumentException("无效的订单明细ID: " + entry.getKey());
             int shipped = oi.getShippedQuantity() == null ? 0 : oi.getShippedQuantity();
-            // 兜底：若历史数据未写入 shipped_quantity，则用发货明细汇总
             if (shipped == 0) {
                 shipped = shipmentDao.sumShippedQuantityByOrderItem(oi.getOrderItemId());
             }
@@ -378,8 +585,17 @@ public class ShipmentService {
                 break;
             }
         }
+        
+        // 检查订单是否已付款
+        boolean isPaid = (order.getPaymentTime() != null);
+        
         if (allReceived) {
-            salesOrderDao.updateStatusAndDeliveryTime(orderId, "COMPLETED", order.getDeliveryTime());
+            if (isPaid) {
+                salesOrderDao.updateStatusAndDeliveryTime(orderId, "COMPLETED", order.getDeliveryTime());
+            } else {
+                // 收货完成但未付款，保持待付款状态
+                salesOrderDao.updateStatusAndDeliveryTime(orderId, "PENDING_PAYMENT", order.getDeliveryTime());
+            }
         } else {
             salesOrderDao.updateStatusAndDeliveryTime(orderId, "DELIVERING", order.getDeliveryTime());
         }

@@ -17,7 +17,7 @@ public class AuthorDao {
     public Long insert(Author author) throws SQLException {
         String sql = "INSERT INTO author (author_name, nationality, biography) VALUES (?, ?, ?)";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, author.getAuthorName());
             ps.setString(2, author.getNationality());
             ps.setString(3, author.getBiography());
@@ -39,7 +39,7 @@ public class AuthorDao {
                 "WHERE ba.book_id = ? ORDER BY ba.author_order";
         List<Author> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bookId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -62,7 +62,7 @@ public class AuthorDao {
     public int update(Author author) throws SQLException {
         String sql = "UPDATE author SET author_name = ?, nationality = ?, biography = ? WHERE author_id = ?";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, author.getAuthorName());
             ps.setString(2, author.getNationality());
             ps.setString(3, author.getBiography());
@@ -80,7 +80,7 @@ public class AuthorDao {
                 "WHERE a.author_name LIKE ?";
         Set<String> result = new HashSet<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, "%" + nameKeyword.trim() + "%");
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -90,6 +90,35 @@ public class AuthorDao {
         }
         return result;
     }
+
+    /**
+     * 按作者姓名和作者顺序查询其参与的书目编号集合。
+     * 
+     * @param nameKeyword 作者姓名关键字
+     * @param authorOrder 作者顺序（1=第一作者, 2=第二作者, 等）；传0或null表示不限
+     */
+    public Set<String> findBookIdsByAuthorNameLikeWithOrder(String nameKeyword, Integer authorOrder)
+            throws SQLException {
+        StringBuilder sql = new StringBuilder(
+                "SELECT DISTINCT ba.book_id " +
+                        "FROM author a JOIN book_author ba ON a.author_id = ba.author_id " +
+                        "WHERE a.author_name LIKE ?");
+        if (authorOrder != null && authorOrder > 0) {
+            sql.append(" AND ba.author_order = ?");
+        }
+        Set<String> result = new HashSet<>();
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            ps.setString(1, "%" + nameKeyword.trim() + "%");
+            if (authorOrder != null && authorOrder > 0) {
+                ps.setInt(2, authorOrder);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(rs.getString("book_id"));
+                }
+            }
+        }
+        return result;
+    }
 }
-
-

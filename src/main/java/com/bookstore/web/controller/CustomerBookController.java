@@ -13,8 +13,8 @@ import java.util.*;
 /**
  * 顾客端-书目浏览与查询接口。
  * 逻辑严格复刻 CustomerView.loadAllBooks / searchBooks：
- * - /api/customer/books         -> 全部在售书目
- * - /api/customer/books/search  -> 单字段关键字搜索（书号/书名/出版社/作者/关键字）
+ * - /api/customer/books -> 全部在售书目
+ * - /api/customer/books/search -> 单字段关键字搜索（书号/书名/出版社/作者/关键字）
  */
 @RestController
 @RequestMapping("/api/customer/books")
@@ -32,6 +32,60 @@ public class CustomerBookController {
     public ResponseEntity<List<Book>> listAll() throws SQLException {
         List<Book> books = bookDao.findAll();
         return ResponseEntity.ok(books);
+    }
+
+    /**
+     * 获取图书总数。
+     */
+    @GetMapping("/count")
+    public ResponseEntity<Integer> getCount() throws SQLException {
+        return ResponseEntity.ok(bookDao.countAll());
+    }
+
+    /**
+     * 获取单本书籍详情，包含作者和关键词。
+     */
+    @GetMapping("/{bookId}")
+    public ResponseEntity<?> getBookDetail(@PathVariable("bookId") String bookId) throws SQLException {
+        Book book = bookDao.findById(bookId);
+        if (book == null) {
+            return ResponseEntity.notFound().build();
+        }
+        var authors = authorDao.findByBookId(bookId);
+        var keywords = keywordDao.findByBookId(bookId);
+
+        // 如果是丛书，获取子书目列表
+        List<Book> childBooks = null;
+        if (book.isSeriesFlag()) {
+            childBooks = bookDao.findChildBooks(bookId);
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("book", book);
+        resp.put("authors", authors);
+        resp.put("keywords", keywords);
+        if (childBooks != null) {
+            resp.put("childBooks", childBooks);
+        }
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 获取所有丛书列表。
+     */
+    @GetMapping("/series")
+    public ResponseEntity<List<Book>> listSeriesBooks() throws SQLException {
+        List<Book> series = bookDao.findSeriesBooks();
+        return ResponseEntity.ok(series);
+    }
+
+    /**
+     * 获取丛书的子书目列表。
+     */
+    @GetMapping("/{bookId}/children")
+    public ResponseEntity<List<Book>> listChildBooks(@PathVariable("bookId") String bookId) throws SQLException {
+        List<Book> children = bookDao.findChildBooks(bookId);
+        return ResponseEntity.ok(children);
     }
 
     /**
@@ -86,6 +140,69 @@ public class CustomerBookController {
 
         return ResponseEntity.ok(new ArrayList<>(map.values()));
     }
+
+    /**
+     * 高级搜索：按作者查询，可指定作者顺序（第一作者、第二作者等）。
+     * 
+     * @param author      作者名关键字
+     * @param authorOrder 作者顺序（1=第一作者, 2=第二作者, 0=不限）
+     */
+    @GetMapping("/search/by-author")
+    public ResponseEntity<List<Book>> searchByAuthor(
+            @RequestParam("author") String author,
+            @RequestParam(value = "authorOrder", required = false, defaultValue = "0") Integer authorOrder)
+            throws SQLException {
+        if (author == null || author.trim().isEmpty()) {
+            return ResponseEntity.ok(new ArrayList<>());
+        }
+        Set<String> bookIds = authorDao.findBookIdsByAuthorNameLikeWithOrder(author, authorOrder);
+        List<Book> result = new ArrayList<>();
+        for (String bookId : bookIds) {
+            Book b = bookDao.findById(bookId);
+            if (b != null) {
+                result.add(b);
+            }
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 高级搜索：按多个关键字查询，可指定最低匹配数。
+     * 
+     * @param keywords 逗号分隔的关键字列表，如 "数据库,SQL,编程"
+     * @param minMatch 最低匹配数（默认1，即匹配任意一个关键字即可）
+     */
+    @GetMapping("/search/by-keywords")
+    public ResponseEntity<List<Map<String, Object>>> searchByKeywords(
+            @RequestParam("keywords") String keywords,
+            @RequestParam(value = "minMatch", required = false, defaultValue = "1") Integer minMatch)
+            throws SQLException {
+        if (keywords == null || keywords.trim().isEmpty()) {
+            return ResponseEntity.ok(new ArrayList<>());
+        }
+        String[] kwArray = keywords.split(",");
+        List<String> kwList = new ArrayList<>();
+        for (String kw : kwArray) {
+            if (kw.trim().length() > 0) {
+                kwList.add(kw.trim());
+            }
+        }
+        if (kwList.isEmpty()) {
+            return ResponseEntity.ok(new ArrayList<>());
+        }
+
+        Map<String, Integer> matchMap = keywordDao.findBookIdsByKeywordsWithMinMatch(kwList, minMatch);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : matchMap.entrySet()) {
+            Book b = bookDao.findById(entry.getKey());
+            if (b != null) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("book", b);
+                item.put("matchCount", entry.getValue());
+                item.put("totalKeywords", kwList.size());
+                result.add(item);
+            }
+        }
+        return ResponseEntity.ok(result);
+    }
 }
-
-

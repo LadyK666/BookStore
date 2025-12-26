@@ -101,6 +101,18 @@ public class SupplyDao {
     }
 
     /**
+     * 删除指定书籍的所有供货关系
+     */
+    public void deleteByBookId(String bookId) throws SQLException {
+        String sql = "DELETE FROM supply WHERE book_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
      * 更新某条供货关系（按 supplier_id + book_id）。
      */
     public void update(Supply supply) throws SQLException {

@@ -18,18 +18,33 @@ public class BookDao {
      * 查询所有图书（按 book_id 排序）。
      */
     public List<Book> findAll() throws SQLException {
-        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog FROM book ORDER BY book_id";
+        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id FROM book ORDER BY COALESCE(parent_book_id, book_id), series_flag DESC, book_id";
         List<Book> list = new ArrayList<>();
 
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
                 list.add(mapRow(rs));
             }
         }
         return list;
+    }
+
+    /**
+     * 获取图书总数。
+     */
+    public int countAll() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM book";
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+            return 0;
+        }
     }
 
     /**
@@ -40,7 +55,8 @@ public class BookDao {
      * - publisher：按出版社模糊匹配（LIKE）
      */
     public List<Book> findByConditions(String bookId, String title, String publisher) throws SQLException {
-        StringBuilder sql = new StringBuilder("SELECT book_id, isbn, title, publisher, publish_date, edition, price, status FROM book WHERE 1=1");
+        StringBuilder sql = new StringBuilder(
+                "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id FROM book WHERE 1=1");
         List<Object> params = new ArrayList<>();
 
         if (bookId != null && !bookId.trim().isEmpty()) {
@@ -56,11 +72,11 @@ public class BookDao {
             params.add("%" + publisher.trim() + "%");
         }
 
-        sql.append(" ORDER BY book_id");
+        sql.append(" ORDER BY COALESCE(parent_book_id, book_id), series_flag DESC, book_id");
 
         List<Book> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
@@ -69,17 +85,17 @@ public class BookDao {
                     list.add(mapRow(rs));
                 }
             }
+            return list;
         }
-        return list;
     }
 
     /**
      * 根据主键查询图书。
      */
     public Book findById(String bookId) throws SQLException {
-        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog FROM book WHERE book_id = ?";
+        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id FROM book WHERE book_id = ?";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bookId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -94,10 +110,10 @@ public class BookDao {
      * 新增一本图书。
      */
     public int insert(Book book) throws SQLException {
-        String sql = "INSERT INTO book (book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO book (book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, book.getBookId());
             ps.setString(2, book.getIsbn());
@@ -113,6 +129,8 @@ public class BookDao {
             ps.setString(8, book.getStatus());
             ps.setString(9, book.getCoverImageUrl());
             ps.setString(10, book.getCatalog());
+            ps.setBoolean(11, book.isSeriesFlag());
+            ps.setString(12, book.getParentBookId());
 
             return ps.executeUpdate();
         }
@@ -122,10 +140,10 @@ public class BookDao {
      * 更新图书信息（根据 book_id）。
      */
     public int update(Book book) throws SQLException {
-        String sql = "UPDATE book SET isbn = ?, title = ?, publisher = ?, publish_date = ?, edition = ?, price = ?, status = ?, cover_image_url = ?, catalog = ? " +
-                "WHERE book_id = ?";
+        String sql = "UPDATE book SET isbn = ?, title = ?, publisher = ?, publish_date = ?, edition = ?, price = ?, status = ?, cover_image_url = ?, catalog = ?, series_flag = ?, parent_book_id = ? "
+                + "WHERE book_id = ?";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, book.getIsbn());
             ps.setString(2, book.getTitle());
@@ -140,7 +158,9 @@ public class BookDao {
             ps.setString(7, book.getStatus());
             ps.setString(8, book.getCoverImageUrl());
             ps.setString(9, book.getCatalog());
-            ps.setString(10, book.getBookId());
+            ps.setBoolean(10, book.isSeriesFlag());
+            ps.setString(11, book.getParentBookId());
+            ps.setString(12, book.getBookId());
 
             return ps.executeUpdate();
         }
@@ -152,7 +172,7 @@ public class BookDao {
     public int deleteById(String bookId) throws SQLException {
         String sql = "DELETE FROM book WHERE book_id = ?";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bookId);
             return ps.executeUpdate();
         }
@@ -176,8 +196,47 @@ public class BookDao {
         b.setStatus(rs.getString("status"));
         b.setCoverImageUrl(rs.getString("cover_image_url"));
         b.setCatalog(rs.getString("catalog"));
+        // 丛书字段
+        try {
+            b.setSeriesFlag(rs.getBoolean("series_flag"));
+            b.setParentBookId(rs.getString("parent_book_id"));
+        } catch (SQLException ignored) {
+            // 某些查询可能不包含这些字段
+        }
         return b;
     }
+
+    /**
+     * 查询丛书的子书目列表。
+     */
+    public List<Book> findChildBooks(String parentBookId) throws SQLException {
+        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id FROM book WHERE parent_book_id = ? ORDER BY book_id";
+        List<Book> list = new ArrayList<>();
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, parentBookId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 查询所有丛书（series_flag = 1）。
+     */
+    public List<Book> findSeriesBooks() throws SQLException {
+        String sql = "SELECT book_id, isbn, title, publisher, publish_date, edition, price, status, cover_image_url, catalog, series_flag, parent_book_id FROM book WHERE series_flag = 1 ORDER BY book_id";
+        List<Book> list = new ArrayList<>();
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                list.add(mapRow(rs));
+            }
+        }
+        return list;
+    }
 }
-
-

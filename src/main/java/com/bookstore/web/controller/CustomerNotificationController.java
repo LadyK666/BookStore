@@ -29,6 +29,45 @@ public class CustomerNotificationController {
         List<CustomerNotification> list = notificationDao.findByCustomerId(customerId);
         return ResponseEntity.ok(list);
     }
+
+    /**
+     * 标记单条通知为已读。
+     */
+    @PostMapping("/{customerId}/notifications/{notificationId}/read")
+    public ResponseEntity<Void> markAsRead(
+            @PathVariable("customerId") long customerId,
+            @PathVariable("notificationId") long notificationId) throws SQLException {
+        notificationDao.markAsRead(notificationId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 标记所有通知为已读。
+     */
+    @PostMapping("/{customerId}/notifications/read-all")
+    public ResponseEntity<Void> markAllAsRead(@PathVariable("customerId") long customerId) throws SQLException {
+        notificationDao.markAllAsRead(customerId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 删除单条通知。
+     */
+    @DeleteMapping("/{customerId}/notifications/{notificationId}")
+    public ResponseEntity<Void> deleteNotification(
+            @PathVariable("customerId") long customerId,
+            @PathVariable("notificationId") long notificationId) throws SQLException {
+        notificationDao.delete(notificationId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 删除所有通知。
+     */
+    @DeleteMapping("/{customerId}/notifications")
+    public ResponseEntity<Void> deleteAllNotifications(@PathVariable("customerId") long customerId)
+            throws SQLException {
+        notificationDao.deleteAllByCustomer(customerId);
+        return ResponseEntity.ok().build();
+    }
 }
-
-

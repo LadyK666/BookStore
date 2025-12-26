@@ -1334,7 +1334,7 @@ public class CustomerView {
                             return null;
                         }
                         ShipmentService shipmentService = new ShipmentService();
-                        shipmentService.confirmReceipt(order.getOrderId(), receiveMap);
+                        shipmentService.confirmReceiptByItems(order.getOrderId(), receiveMap);
                         showAlert(Alert.AlertType.INFORMATION, "成功", "收货确认成功");
                         loadOrders(table, statusFilter);
                     } catch (NumberFormatException ex) {

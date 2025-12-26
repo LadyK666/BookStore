@@ -6,5 +6,6 @@
     "maven.terminal.useJavaHome": true,
 
     // Maven 可执行文件路径
-    "maven.executable.path": "D:\\apache-maven-3.9.10-bin\\apache-maven-3.9.10\\bin\\mvn.cmd"
+    "maven.executable.path": "D:\\apache-maven-3.9.10-bin\\apache-maven-3.9.10\\bin\\mvn.cmd",
+    "java.compile.nullAnalysis.mode": "disabled"
 }

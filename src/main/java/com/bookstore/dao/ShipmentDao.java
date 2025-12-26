@@ -69,7 +69,7 @@ public class ShipmentDao {
 
     public List<Shipment> findByOrderId(long orderId) throws SQLException {
         String sql = "SELECT shipment_id, order_id, ship_time, carrier, tracking_number, shipment_status, operator " +
-                "FROM shipment WHERE order_id = ?";
+                "FROM shipment WHERE order_id = ? ORDER BY shipment_id ASC";
         List<Shipment> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -182,6 +182,50 @@ public class ShipmentDao {
                 return 0;
             }
         }
+    }
+
+    /**
+     * 更新发货单状态
+     */
+    public int updateShipmentStatus(long shipmentId, String status) throws SQLException {
+        String sql = "UPDATE shipment SET shipment_status = ? WHERE shipment_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            ps.setLong(2, shipmentId);
+            return ps.executeUpdate();
+        }
+    }
+
+    /**
+     * 查询订单下指定状态的发货单列表
+     */
+    public List<Shipment> findByOrderIdAndStatus(long orderId, String status) throws SQLException {
+        String sql = "SELECT shipment_id, order_id, ship_time, carrier, tracking_number, shipment_status, operator " +
+                "FROM shipment WHERE order_id = ? AND shipment_status = ? ORDER BY shipment_id ASC";
+        List<Shipment> list = new ArrayList<>();
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, orderId);
+            ps.setString(2, status);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Shipment s = new Shipment();
+                    s.setShipmentId(rs.getLong("shipment_id"));
+                    s.setOrderId(rs.getLong("order_id"));
+                    Timestamp ts = rs.getTimestamp("ship_time");
+                    if (ts != null) {
+                        s.setShipTime(ts.toLocalDateTime());
+                    }
+                    s.setCarrier(rs.getString("carrier"));
+                    s.setTrackingNumber(rs.getString("tracking_number"));
+                    s.setShipmentStatus(rs.getString("shipment_status"));
+                    s.setOperator(rs.getString("operator"));
+                    list.add(s);
+                }
+            }
+        }
+        return list;
     }
 }
 

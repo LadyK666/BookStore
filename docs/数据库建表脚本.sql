@@ -311,3 +311,27 @@ CREATE TABLE IF NOT EXISTS purchase_order_item (
     CONSTRAINT fk_poi_oos
         FOREIGN KEY (related_out_of_stock_id) REFERENCES out_of_stock_record(record_id)
 );
+
+-- ===============================================
+-- 12. 书籍询价请求表（当书库中未找到时顾客提交的询价）
+-- ===============================================
+CREATE TABLE IF NOT EXISTS book_inquiry_request (
+    inquiry_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
+    customer_id     BIGINT NOT NULL,
+    book_title      VARCHAR(255) NOT NULL,
+    book_author     VARCHAR(255),
+    publisher       VARCHAR(255),
+    isbn            VARCHAR(32),
+    quantity        INT NOT NULL DEFAULT 1,
+    customer_note   VARCHAR(500),
+    inquiry_time    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status          ENUM('PENDING','QUOTED','REJECTED','ACCEPTED') NOT NULL DEFAULT 'PENDING',
+    admin_reply     VARCHAR(500),
+    quoted_price    DECIMAL(10,2),
+    reply_time      DATETIME,
+    CONSTRAINT fk_inquiry_customer
+        FOREIGN KEY (customer_id) REFERENCES customer(customer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inquiry_customer ON book_inquiry_request(customer_id);
+CREATE INDEX IF NOT EXISTS idx_inquiry_status ON book_inquiry_request(status);

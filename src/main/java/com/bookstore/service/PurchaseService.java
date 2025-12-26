@@ -1,9 +1,13 @@
 package com.bookstore.service;
 
+import com.bookstore.dao.CustomerNotificationDao;
+import com.bookstore.dao.CustomerOutOfStockRequestDao;
 import com.bookstore.dao.InventoryDao;
 import com.bookstore.dao.OutOfStockRecordDao;
 import com.bookstore.dao.PurchaseOrderDao;
 import com.bookstore.dao.SupplyDao;
+import com.bookstore.model.CustomerNotification;
+import com.bookstore.model.CustomerOutOfStockRequest;
 import com.bookstore.model.OutOfStockRecord;
 import com.bookstore.model.PurchaseOrder;
 import com.bookstore.model.PurchaseOrderItem;
@@ -13,7 +17,9 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 采购业务服务
@@ -24,12 +30,15 @@ public class PurchaseService {
     private final InventoryDao inventoryDao = new InventoryDao();
     private final OutOfStockRecordDao outOfStockRecordDao = new OutOfStockRecordDao();
     private final SupplyDao supplyDao = new SupplyDao();
+    private final CustomerOutOfStockRequestDao customerReqDao = new CustomerOutOfStockRequestDao();
+    private final CustomerNotificationDao notificationDao = new CustomerNotificationDao();
 
     /**
      * 处理采购单到货：
      * 1. 增加库存
      * 2. 更新关联的缺书记录状态为 COMPLETED
      * 3. 更新采购单状态为 COMPLETED
+     * 4. 通知等待该书的顾客（缺书登记）
      */
     public void receiveGoods(long purchaseOrderId) throws SQLException {
         PurchaseOrder order = purchaseOrderDao.findById(purchaseOrderId);
@@ -42,11 +51,13 @@ public class PurchaseService {
         }
 
         List<PurchaseOrderItem> items = purchaseOrderDao.findItemsByOrderId(purchaseOrderId);
+        Set<String> arrivedBookIds = new HashSet<>();
 
         for (PurchaseOrderItem item : items) {
             // 增加库存
             inventoryDao.increaseQuantity(item.getBookId(), item.getPurchaseQuantity());
             System.out.printf("  书号 %s 库存增加 %d%n", item.getBookId(), item.getPurchaseQuantity());
+            arrivedBookIds.add(item.getBookId());
 
             // 如果关联了缺书记录，安全地将其标记为 COMPLETED（避免唯一约束冲突）
             if (item.getRelatedOutOfStockId() != null) {
@@ -58,6 +69,31 @@ public class PurchaseService {
         // 更新采购单状态
         purchaseOrderDao.updateStatus(purchaseOrderId, "COMPLETED");
         System.out.println("采购单 " + purchaseOrderId + " 已完成到货处理");
+
+        // 通知等待这些书的顾客
+        notifyCustomersForArrivedBooks(arrivedBookIds);
+    }
+
+    /**
+     * 通知等待指定书籍的顾客（通过顾客端通知功能）。
+     * 查找已付款且状态为 ACCEPTED 的缺书登记，发送到货通知。
+     */
+    private void notifyCustomersForArrivedBooks(Set<String> bookIds) throws SQLException {
+        for (String bookId : bookIds) {
+            // 查找等待该书的顾客缺书登记（已付款，已被管理员接受）
+            List<CustomerOutOfStockRequest> waitingCustomers = customerReqDao.findAcceptedPaidByBookId(bookId);
+            for (CustomerOutOfStockRequest req : waitingCustomers) {
+                // 发送到货通知
+                CustomerNotification n = new CustomerNotification();
+                n.setCustomerId(req.getCustomerId());
+                n.setTitle("📦 您预订的书籍已到货");
+                n.setContent("您预订的书籍【" + bookId + "】已到货入库，请留意订单发货状态。");
+                n.setType("STOCK_ARRIVAL");
+                n.setReadFlag(false);
+                notificationDao.insert(n);
+                System.out.printf("  已通知顾客 %d：书号 %s 已到货%n", req.getCustomerId(), bookId);
+            }
+        }
     }
 
     /**
@@ -67,16 +103,16 @@ public class PurchaseService {
      * - 单价优先使用供货关系表 supply 中该供应商的供货价；若不存在则抛出异常
      * - 生成采购单后，将缺书记录状态更新为 PURCHASING
      *
-     * @param recordIds   选中的缺书记录 ID 列表（要求非空）
-     * @param supplierId  供应商 ID
+     * @param recordIds    选中的缺书记录 ID 列表（要求非空）
+     * @param supplierId   供应商 ID
      * @param expectedDate 期望到货日期，允许为 null
-     * @param buyer       采购员姓名
+     * @param buyer        采购员姓名
      * @return 新建采购单的 ID
      */
     public long createPurchaseOrderFromOutOfStock(List<Long> recordIds,
-                                                  long supplierId,
-                                                  LocalDate expectedDate,
-                                                  String buyer) throws SQLException {
+            long supplierId,
+            LocalDate expectedDate,
+            String buyer) throws SQLException {
         if (recordIds == null || recordIds.isEmpty()) {
             throw new IllegalArgumentException("缺书记录列表不能为空");
         }
@@ -145,4 +181,3 @@ public class PurchaseService {
         return poId;
     }
 }
-

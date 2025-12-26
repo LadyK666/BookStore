@@ -62,6 +62,9 @@ public class AdminBookController {
             book.setStatus("AVAILABLE");
             book.setCoverImageUrl(req.getCoverImageUrl());
             book.setCatalog(req.getCatalog());
+            // 设置丛书标志和父书号
+            book.setSeriesFlag(req.getSeriesFlag() != null ? req.getSeriesFlag() : false);
+            book.setParentBookId(req.getParentBookId() != null && !req.getParentBookId().trim().isEmpty() ? req.getParentBookId().trim() : null);
 
             bookDao.insert(book);
 
@@ -309,6 +312,143 @@ public class AdminBookController {
         }
     }
 
+    /**
+     * 删除书目。
+     * 逻辑：
+     * - 删除子书：不允许直接删除，提示需要删除父丛书
+     * - 删除丛书：删除丛书及其所有子书，同时删除所有相关的数据
+     * - 删除普通书：直接删除，同时删除所有相关的数据
+     */
+    @DeleteMapping("/{bookId}")
+    public ResponseEntity<?> deleteBook(@PathVariable String bookId) {
+        java.sql.Connection conn = null;
+        try {
+            Book book = bookDao.findById(bookId);
+            if (book == null) {
+                return ResponseEntity.badRequest().body(new ErrorResp("书目不存在"));
+            }
+
+            // 检查是否是子书
+            if (book.getParentBookId() != null && !book.getParentBookId().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(new ErrorResp("不能直接删除子书，请删除其父丛书"));
+            }
+
+            // 使用事务确保数据一致性
+            conn = com.bookstore.util.DBUtil.getConnection();
+            conn.setAutoCommit(false);
+            
+            try {
+                if (book.isSeriesFlag()) {
+                    // 删除丛书：先删除所有子书及其相关数据
+                    List<Book> childBooks = bookDao.findChildBooks(bookId);
+                    for (Book child : childBooks) {
+                        deleteBookRelatedData(conn, child.getBookId());
+                        // 删除子书本身
+                        String deleteBookSql = "DELETE FROM book WHERE book_id = ?";
+                        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteBookSql)) {
+                            ps.setString(1, child.getBookId());
+                            ps.executeUpdate();
+                        }
+                    }
+                }
+                
+                // 删除该书籍的所有相关数据
+                deleteBookRelatedData(conn, bookId);
+                
+                // 删除书籍本身
+                String deleteBookSql = "DELETE FROM book WHERE book_id = ?";
+                try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteBookSql)) {
+                    ps.setString(1, bookId);
+                    ps.executeUpdate();
+                }
+                
+                conn.commit();
+                return ResponseEntity.ok().build();
+            } catch (Exception e) {
+                if (conn != null) {
+                    conn.rollback();
+                }
+                throw e;
+            } finally {
+                if (conn != null) {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                }
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResp(e.getMessage()));
+        }
+    }
+
+    /**
+     * 删除书籍的所有相关数据（在同一个事务连接中）
+     * 删除顺序需要考虑外键依赖关系
+     */
+    private void deleteBookRelatedData(java.sql.Connection conn, String bookId) throws SQLException {
+        // 1. 删除购物车中的记录
+        String deleteCartSql = "DELETE FROM shopping_cart WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteCartSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 2. 删除销售订单明细（注意：如果订单已存在，可能需要特殊处理，这里先删除）
+        String deleteOrderItemSql = "DELETE FROM sales_order_item WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteOrderItemSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 3. 删除采购单明细
+        String deletePoItemSql = "DELETE FROM purchase_order_item WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deletePoItemSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 4. 删除缺货记录
+        String deleteOosSql = "DELETE FROM out_of_stock_record WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteOosSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 5. 删除客户缺货请求
+        String deleteCoorsSql = "DELETE FROM customer_out_of_stock_request WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteCoorsSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 6. 删除库存记录
+        String deleteInventorySql = "DELETE FROM inventory WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteInventorySql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 7. 删除书籍关键字关系
+        String deleteKeywordSql = "DELETE FROM book_keyword WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteKeywordSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 8. 删除书籍作者关系
+        String deleteAuthorSql = "DELETE FROM book_author WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteAuthorSql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+
+        // 9. 删除供货关系
+        String deleteSupplySql = "DELETE FROM supply WHERE book_id = ?";
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(deleteSupplySql)) {
+            ps.setString(1, bookId);
+            ps.executeUpdate();
+        }
+    }
+
     public static class AddBookReq {
         private String bookId;
         private String isbn;
@@ -319,6 +459,8 @@ public class AdminBookController {
         private String catalog;
         private Integer initQuantity;
         private Integer safetyStock;
+        private Boolean seriesFlag;
+        private String parentBookId;
 
         public String getBookId() {
             return bookId;
@@ -390,6 +532,22 @@ public class AdminBookController {
 
         public void setSafetyStock(Integer safetyStock) {
             this.safetyStock = safetyStock;
+        }
+
+        public Boolean getSeriesFlag() {
+            return seriesFlag;
+        }
+
+        public void setSeriesFlag(Boolean seriesFlag) {
+            this.seriesFlag = seriesFlag;
+        }
+
+        public String getParentBookId() {
+            return parentBookId;
+        }
+
+        public void setParentBookId(String parentBookId) {
+            this.parentBookId = parentBookId;
         }
     }
 

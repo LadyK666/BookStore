@@ -59,6 +59,58 @@ public class AdminSupplierController {
     }
 
     /**
+     * 更新供应商信息
+     */
+    @PutMapping("/{supplierId}")
+    public ResponseEntity<?> updateSupplier(@PathVariable("supplierId") long supplierId,
+                                             @RequestBody AddSupplierReq req) {
+        try {
+            Supplier existing = supplierDao.findById(supplierId);
+            if (existing == null) {
+                return ResponseEntity.badRequest().body(new ErrorResp("供应商不存在"));
+            }
+            if (req == null || req.getSupplierName() == null || req.getSupplierName().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(new ErrorResp("供应商名称不能为空"));
+            }
+            Supplier s = new Supplier();
+            s.setSupplierId(supplierId);
+            s.setSupplierName(req.getSupplierName().trim());
+            s.setContactPerson(req.getContactPerson() != null ? req.getContactPerson().trim() : null);
+            s.setPhone(req.getPhone() != null ? req.getPhone().trim() : null);
+            s.setEmail(req.getEmail() != null ? req.getEmail().trim() : null);
+            s.setAddress(req.getAddress() != null ? req.getAddress().trim() : null);
+            s.setPaymentTerms(req.getPaymentTerms() != null ? req.getPaymentTerms().trim() : null);
+            s.setCooperationStatus(existing.getCooperationStatus()); // 保持原有状态
+            supplierDao.update(s);
+            return ResponseEntity.ok(supplierDao.findById(supplierId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResp(e.getMessage()));
+        }
+    }
+
+    /**
+     * 删除供应商
+     */
+    @DeleteMapping("/{supplierId}")
+    public ResponseEntity<?> deleteSupplier(@PathVariable("supplierId") long supplierId) {
+        try {
+            Supplier existing = supplierDao.findById(supplierId);
+            if (existing == null) {
+                return ResponseEntity.badRequest().body(new ErrorResp("供应商不存在"));
+            }
+            // 检查是否有供货关系
+            List<Supply> supplies = supplyDao.findBySupplierId(supplierId);
+            if (supplies != null && !supplies.isEmpty()) {
+                return ResponseEntity.badRequest().body(new ErrorResp("该供应商存在供货关系，无法删除。请先删除所有供货关系后再删除供应商。"));
+            }
+            supplierDao.delete(supplierId);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResp(e.getMessage()));
+        }
+    }
+
+    /**
      * 获取供应商的供货清单（含书目信息）。
      */
     @GetMapping("/{supplierId}/supplies")
@@ -80,6 +132,8 @@ public class AdminSupplierController {
                 resp.setBookIsbn(book.getIsbn());
                 resp.setBookPublisher(book.getPublisher());
                 resp.setBookPrice(book.getPrice());
+                resp.setBookSeriesFlag(book.isSeriesFlag());
+                resp.setBookParentBookId(book.getParentBookId());
             }
             result.add(resp);
         }
@@ -246,6 +300,8 @@ public class AdminSupplierController {
         private String bookIsbn;
         private String bookPublisher;
         private BigDecimal bookPrice;
+        private Boolean bookSeriesFlag;
+        private String bookParentBookId;
         private BigDecimal supplyPrice;
         private Integer leadTimeDays;
         private boolean primary;
@@ -320,6 +376,22 @@ public class AdminSupplierController {
 
         public void setPrimary(boolean primary) {
             this.primary = primary;
+        }
+
+        public Boolean getBookSeriesFlag() {
+            return bookSeriesFlag;
+        }
+
+        public void setBookSeriesFlag(Boolean bookSeriesFlag) {
+            this.bookSeriesFlag = bookSeriesFlag;
+        }
+
+        public String getBookParentBookId() {
+            return bookParentBookId;
+        }
+
+        public void setBookParentBookId(String bookParentBookId) {
+            this.bookParentBookId = bookParentBookId;
         }
     }
 

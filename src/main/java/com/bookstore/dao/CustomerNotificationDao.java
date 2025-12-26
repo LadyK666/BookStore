@@ -18,7 +18,7 @@ public class CustomerNotificationDao {
                 "(customer_id, order_id, type, title, content, created_time, read_flag) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, n.getCustomerId());
             if (n.getOrderId() != null) {
                 ps.setLong(2, n.getOrderId());
@@ -46,7 +46,7 @@ public class CustomerNotificationDao {
                 "FROM customer_notification WHERE customer_id = ? ORDER BY created_time DESC, notification_id DESC";
         List<CustomerNotification> list = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, customerId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -75,6 +75,40 @@ public class CustomerNotificationDao {
         n.setReadFlag(rs.getBoolean("read_flag"));
         return n;
     }
+
+    public void markAsRead(long notificationId) throws SQLException {
+        String sql = "UPDATE customer_notification SET read_flag = 1 WHERE notification_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, notificationId);
+            ps.executeUpdate();
+        }
+    }
+
+    public void markAllAsRead(long customerId) throws SQLException {
+        String sql = "UPDATE customer_notification SET read_flag = 1 WHERE customer_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, customerId);
+            ps.executeUpdate();
+        }
+    }
+
+    public void delete(long notificationId) throws SQLException {
+        String sql = "DELETE FROM customer_notification WHERE notification_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, notificationId);
+            ps.executeUpdate();
+        }
+    }
+
+    public void deleteAllByCustomer(long customerId) throws SQLException {
+        String sql = "DELETE FROM customer_notification WHERE customer_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, customerId);
+            ps.executeUpdate();
+        }
+    }
 }
-
-

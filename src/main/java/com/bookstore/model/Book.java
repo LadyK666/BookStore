@@ -18,6 +18,9 @@ public class Book {
     private String status;
     private String coverImageUrl;
     private String catalog;
+    // 丛书支持字段
+    private boolean seriesFlag; // 是否为丛书
+    private String parentBookId; // 父书号（如果是丛书的子书）
 
     public String getBookId() {
         return bookId;
@@ -99,6 +102,22 @@ public class Book {
         this.catalog = catalog;
     }
 
+    public boolean isSeriesFlag() {
+        return seriesFlag;
+    }
+
+    public void setSeriesFlag(boolean seriesFlag) {
+        this.seriesFlag = seriesFlag;
+    }
+
+    public String getParentBookId() {
+        return parentBookId;
+    }
+
+    public void setParentBookId(String parentBookId) {
+        this.parentBookId = parentBookId;
+    }
+
     @Override
     public String toString() {
         return "Book{" +
@@ -110,10 +129,8 @@ public class Book {
                 ", edition='" + edition + '\'' +
                 ", price=" + price +
                 ", status='" + status + '\'' +
-                ", coverImageUrl='" + coverImageUrl + '\'' +
-                ", catalog='" + (catalog != null ? catalog.substring(0, Math.min(20, catalog.length())) + "..." : null) + '\'' +
+                ", seriesFlag=" + seriesFlag +
+                ", parentBookId='" + parentBookId + '\'' +
                 '}';
     }
 }
-
-

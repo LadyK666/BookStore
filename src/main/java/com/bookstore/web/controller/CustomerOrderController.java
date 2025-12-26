@@ -12,6 +12,7 @@ import com.bookstore.model.Customer;
 import com.bookstore.model.SalesOrder;
 import com.bookstore.model.SalesOrderItem;
 import com.bookstore.model.Shipment;
+import com.bookstore.model.ShipmentItem;
 import com.bookstore.model.CustomerOutOfStockRequest;
 import com.bookstore.model.OutOfStockRecord;
 import com.bookstore.service.OrderService;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -54,8 +56,8 @@ public class CustomerOrderController {
      * @param status     订单状态；传 "全部" 或为空则不过滤
      */
     @GetMapping("/{customerId}/orders")
-    public ResponseEntity<List<SalesOrder>> listOrders(@PathVariable("customerId") long customerId,
-                                                       @RequestParam(value = "status", required = false) String status)
+    public ResponseEntity<List<OrderWithShipmentFlag>> listOrders(@PathVariable("customerId") long customerId,
+            @RequestParam(value = "status", required = false) String status)
             throws SQLException {
         List<SalesOrder> orders = salesOrderDao.findByCustomerId(customerId);
         if (status != null && !status.isEmpty() && !"全部".equals(status)) {
@@ -67,7 +69,18 @@ public class CustomerOrderController {
             }
             orders = filtered;
         }
-        return ResponseEntity.ok(orders);
+        
+        // 为每个订单添加是否有发货记录的标识
+        List<OrderWithShipmentFlag> result = new ArrayList<>();
+        for (SalesOrder order : orders) {
+            OrderWithShipmentFlag dto = new OrderWithShipmentFlag();
+            dto.setOrder(order);
+            // 检查是否有发货记录
+            List<Shipment> shipments = shipmentDao.findByOrderId(order.getOrderId());
+            dto.setHasShipments(shipments != null && !shipments.isEmpty());
+            result.add(dto);
+        }
+        return ResponseEntity.ok(result);
     }
 
     /**
@@ -82,12 +95,92 @@ public class CustomerOrderController {
         }
         List<SalesOrderItem> items = salesOrderDao.findItemsByOrderId(orderId);
         List<Shipment> shipments = shipmentDao.findByOrderId(orderId);
+        
+        // 为每个shipment加载items信息
+        List<ShipmentWithItems> shipmentsWithItems = new ArrayList<>();
+        for (Shipment shipment : shipments) {
+            ShipmentWithItems swi = new ShipmentWithItems();
+            swi.setShipment(shipment);
+            List<ShipmentItem> shipmentItems = shipmentDao.findItemsByShipmentId(shipment.getShipmentId());
+            // 转换为包含bookId的DTO
+            List<ShipmentItemDto> itemDtos = new ArrayList<>();
+            for (ShipmentItem si : shipmentItems) {
+                ShipmentItemDto dto = new ShipmentItemDto();
+                dto.setOrderItemId(si.getOrderItemId());
+                dto.setShipQuantity(si.getShipQuantity());
+                // 从orderItems中查找bookId
+                boolean found = false;
+                for (SalesOrderItem oi : items) {
+                    if (oi.getOrderItemId() != null && oi.getOrderItemId().equals(si.getOrderItemId())) {
+                        dto.setBookId(oi.getBookId());
+                        found = true;
+                        System.out.println("Found bookId " + oi.getBookId() + " for orderItemId " + si.getOrderItemId());
+                        break;
+                    }
+                }
+                if (!found) {
+                    StringBuilder orderItemIdsStr = new StringBuilder();
+                    for (SalesOrderItem oi : items) {
+                        if (orderItemIdsStr.length() > 0) orderItemIdsStr.append(",");
+                        orderItemIdsStr.append(oi.getOrderItemId() != null ? oi.getOrderItemId().toString() : "null");
+                    }
+                    System.out.println("WARNING: Shipment " + shipment.getShipmentId() + " item with orderItemId " + si.getOrderItemId() + 
+                        " not found in order items. Order items: " + orderItemIdsStr);
+                }
+                itemDtos.add(dto);
+            }
+            swi.setItems(itemDtos);
+            shipmentsWithItems.add(swi);
+            // 调试日志：确保items被正确设置
+            StringBuilder bookIdsStr = new StringBuilder();
+            for (ShipmentItemDto d : itemDtos) {
+                if (bookIdsStr.length() > 0) bookIdsStr.append(",");
+                bookIdsStr.append(d.getBookId() != null ? d.getBookId() : "null");
+            }
+            System.out.println("Shipment " + shipment.getShipmentId() + " has " + itemDtos.size() + " items, bookIds: " + bookIdsStr);
+        }
 
         OrderDetailResp resp = new OrderDetailResp();
         resp.setOrder(order);
-        resp.setItems(items);
-        resp.setShipments(shipments);
+        resp.setItems(items != null ? items : new ArrayList<>());
+        resp.setShipmentsWithItems(shipmentsWithItems);
+        // 为了向后兼容，也设置shipments字段
+        List<Shipment> shipmentList = new ArrayList<>();
+        for (ShipmentWithItems swi : shipmentsWithItems) {
+            shipmentList.add(swi.getShipment());
+        }
+        resp.setShipments(shipmentList);
         return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 创建订单前检查库存。
+     * 返回缺货商品列表，如果没有缺货则返回空列表。
+     */
+    @PostMapping("/{customerId}/orders/check-stock")
+    public ResponseEntity<List<ShortageResp>> checkStockBeforeOrder(@PathVariable("customerId") long customerId,
+            @RequestBody CreateOrderRequest req) {
+        try {
+            if (req.getItems() == null || req.getItems().isEmpty()) {
+                return ResponseEntity.ok(new ArrayList<>());
+            }
+            List<ShortageResp> shortages = new ArrayList<>();
+            for (CreateOrderItem ci : req.getItems()) {
+                if (ci.getQuantity() == null || ci.getQuantity() <= 0)
+                    continue;
+                int currentStock = inventoryDao.getQuantity(ci.getBookId());
+                if (currentStock < ci.getQuantity()) {
+                    ShortageResp sr = new ShortageResp();
+                    sr.setBookId(ci.getBookId());
+                    sr.setQuantity(ci.getQuantity());
+                    sr.setCurrentStock(currentStock);
+                    shortages.add(sr);
+                }
+            }
+            return ResponseEntity.ok(shortages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ArrayList<>());
+        }
     }
 
     /**
@@ -99,7 +192,7 @@ public class CustomerOrderController {
      */
     @PostMapping("/{customerId}/orders")
     public ResponseEntity<?> createOrder(@PathVariable("customerId") long customerId,
-                                         @RequestBody CreateOrderRequest req) {
+            @RequestBody CreateOrderRequest req) {
         try {
             if (req.getItems() == null || req.getItems().isEmpty()) {
                 return ResponseEntity.badRequest().body(new ErrorResp("购物车为空"));
@@ -120,7 +213,8 @@ public class CustomerOrderController {
             List<SalesOrderItem> items = new ArrayList<>();
             BigDecimal goodsAmount = BigDecimal.ZERO;
             for (CreateOrderItem ci : req.getItems()) {
-                if (ci.getQuantity() == null || ci.getQuantity() <= 0) continue;
+                if (ci.getQuantity() == null || ci.getQuantity() <= 0)
+                    continue;
                 BigDecimal originPrice = ci.getUnitPrice() != null ? ci.getUnitPrice() : BigDecimal.ZERO;
                 BigDecimal unitPrice = originPrice.multiply(discount).setScale(2, BigDecimal.ROUND_HALF_UP);
                 BigDecimal sub = unitPrice.multiply(BigDecimal.valueOf(ci.getQuantity()));
@@ -178,15 +272,51 @@ public class CustomerOrderController {
     }
 
     /**
-     * 顾客确认收货（可分次收货）。
-     * 对应 CustomerView.showReceiveDialog 中点击“确认收货”时调用 ShipmentService.confirmReceipt。
-     * 前端以 JSON 对象形式提交：{ "orderItemId": 本次确认收货数量, ... }。
+     * 顾客确认收货（按子发货单收货）。
+     * 新逻辑：对于分次发货的订单，顾客按shipment（子发货）收货。
+     * 前端提交：{ "shipmentId": 123 }
      */
     @PostMapping("/orders/{orderId}/receive")
     public ResponseEntity<?> confirmReceive(@PathVariable("orderId") long orderId,
-                                            @RequestBody Map<Long, Integer> receiveMap) {
+            @RequestBody ReceiveReq req) {
         try {
-            shipmentService.confirmReceipt(orderId, receiveMap);
+            if (req.getShipmentId() != null) {
+                // 新格式：按shipment收货
+                shipmentService.confirmReceipt(orderId, req.getShipmentId());
+            } else if (req.getItems() != null && !req.getItems().isEmpty()) {
+                // 兼容旧格式：按orderItem收货
+                Map<Long, Integer> receiveMap = new HashMap<>();
+                for (ReceiveItem item : req.getItems()) {
+                    receiveMap.put(item.getOrderItemId(), item.getQuantity());
+                }
+                shipmentService.confirmReceiptByItems(orderId, receiveMap);
+            } else {
+                return ResponseEntity.badRequest().body(new ErrorResp("请提供shipmentId或items"));
+            }
+            SalesOrder updated = salesOrderDao.findOrderById(orderId);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResp(e.getMessage()));
+        }
+    }
+
+    /**
+     * 顾客取消订单。
+     * 仅允许取消待付款状态的订单。
+     */
+    @PostMapping("/orders/{orderId}/cancel")
+    public ResponseEntity<?> cancelOrder(@PathVariable("orderId") long orderId) {
+        try {
+            SalesOrder order = salesOrderDao.findOrderById(orderId);
+            if (order == null) {
+                return ResponseEntity.notFound().build();
+            }
+            // 仅允许取消待付款或缺货待处理状态的订单
+            String status = order.getOrderStatus();
+            if (!"PENDING_PAYMENT".equals(status) && !"OUT_OF_STOCK_PENDING".equals(status)) {
+                return ResponseEntity.badRequest().body(new ErrorResp("只能取消待付款的订单"));
+            }
+            salesOrderDao.updateStatusAndPaymentTime(orderId, "CANCELLED", null);
             SalesOrder updated = salesOrderDao.findOrderById(orderId);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
@@ -232,7 +362,7 @@ public class CustomerOrderController {
      */
     @PostMapping("/orders/{orderId}/shortages/decision")
     public ResponseEntity<?> handleShortageDecision(@PathVariable("orderId") long orderId,
-                                                    @RequestBody ShortageDecisionReq req) {
+            @RequestBody ShortageDecisionReq req) {
         try {
             SalesOrder order = salesOrderDao.findOrderById(orderId);
             if (order == null) {
@@ -252,10 +382,16 @@ public class CustomerOrderController {
             }
 
             boolean payAndCreate = "PAY_AND_CREATE".equalsIgnoreCase(req.getDecision());
+            boolean cancelOrder = "CANCEL".equalsIgnoreCase(req.getDecision());
+
+            // 无论哪种决策，都记录顾客缺书登记（供管理员审核）
             createCustomerRequestsAndOutOfStockRecords(order, shortageItems, req.getCustomerNote(), payAndCreate);
 
-            if (!payAndCreate) {
-                // 方案二：暂不付款，仅提交顾客缺书登记，等待管理员决策
+            if (cancelOrder) {
+                // 顾客选择取消订单，但缺书需求已记录，等待管理员决定是否生成正式缺书记录
+                salesOrderDao.updateStatusAndPaymentTime(orderId, "CANCELLED", null);
+            } else if (!payAndCreate) {
+                // 方案二(REQUEST_ONLY)：暂不付款，仅提交顾客缺书登记，等待管理员决策
                 salesOrderDao.updateStatusAndPaymentTime(orderId, "OUT_OF_STOCK_PENDING", null);
             } else {
                 // 方案一：付款并自动生成缺书记录
@@ -271,12 +407,13 @@ public class CustomerOrderController {
 
     /**
      * 根据顾客缺书登记创建正式缺书记录和/或顾客缺书登记记录。
-     * 代码基本等价于 CustomerView.createCustomerRequestsAndOutOfStockRecords()，仅从 UI 迁移到 Service/Web 层。
+     * 代码基本等价于 CustomerView.createCustomerRequestsAndOutOfStockRecords()，仅从 UI 迁移到
+     * Service/Web 层。
      */
     private void createCustomerRequestsAndOutOfStockRecords(SalesOrder order,
-                                                            List<SalesOrderItem> shortageItems,
-                                                            String note,
-                                                            boolean paidAndAuto) throws SQLException {
+            List<SalesOrderItem> shortageItems,
+            String note,
+            boolean paidAndAuto) throws SQLException {
         for (SalesOrderItem item : shortageItems) {
             String bookId = item.getBookId();
             int requestedQty = item.getQuantity();
@@ -311,6 +448,27 @@ public class CustomerOrderController {
                 r.setProcessedAt(LocalDateTime.now());
             }
             customerOutOfStockRequestDao.insert(r);
+        }
+    }
+
+    public static class OrderWithShipmentFlag {
+        private SalesOrder order;
+        private boolean hasShipments;
+
+        public SalesOrder getOrder() {
+            return order;
+        }
+
+        public void setOrder(SalesOrder order) {
+            this.order = order;
+        }
+
+        public boolean isHasShipments() {
+            return hasShipments;
+        }
+
+        public void setHasShipments(boolean hasShipments) {
+            this.hasShipments = hasShipments;
         }
     }
 
@@ -372,7 +530,8 @@ public class CustomerOrderController {
     public static class OrderDetailResp {
         private SalesOrder order;
         private List<SalesOrderItem> items;
-        private List<Shipment> shipments;
+        private List<Shipment> shipments; // 保留向后兼容
+        private List<ShipmentWithItems> shipmentsWithItems;
 
         public SalesOrder getOrder() {
             return order;
@@ -391,11 +550,78 @@ public class CustomerOrderController {
         }
 
         public List<Shipment> getShipments() {
+            // 向后兼容：如果shipmentsWithItems存在，则从中提取shipments
+            if (shipmentsWithItems != null && !shipmentsWithItems.isEmpty()) {
+                List<Shipment> result = new ArrayList<>();
+                for (ShipmentWithItems swi : shipmentsWithItems) {
+                    result.add(swi.getShipment());
+                }
+                return result;
+            }
             return shipments;
         }
 
         public void setShipments(List<Shipment> shipments) {
             this.shipments = shipments;
+        }
+
+        public List<ShipmentWithItems> getShipmentsWithItems() {
+            return shipmentsWithItems;
+        }
+
+        public void setShipmentsWithItems(List<ShipmentWithItems> shipmentsWithItems) {
+            this.shipmentsWithItems = shipmentsWithItems;
+        }
+    }
+    
+    public static class ShipmentWithItems {
+        private Shipment shipment;
+        private List<ShipmentItemDto> items;
+
+        public Shipment getShipment() {
+            return shipment;
+        }
+
+        public void setShipment(Shipment shipment) {
+            this.shipment = shipment;
+        }
+
+        public List<ShipmentItemDto> getItems() {
+            return items;
+        }
+
+        public void setItems(List<ShipmentItemDto> items) {
+            this.items = items;
+        }
+    }
+    
+    public static class ShipmentItemDto {
+        private Long orderItemId;
+        private String bookId;
+        private Integer shipQuantity;
+
+        public Long getOrderItemId() {
+            return orderItemId;
+        }
+
+        public void setOrderItemId(Long orderItemId) {
+            this.orderItemId = orderItemId;
+        }
+
+        public String getBookId() {
+            return bookId;
+        }
+
+        public void setBookId(String bookId) {
+            this.bookId = bookId;
+        }
+
+        public Integer getShipQuantity() {
+            return shipQuantity;
+        }
+
+        public void setShipQuantity(Integer shipQuantity) {
+            this.shipQuantity = shipQuantity;
         }
     }
 
@@ -486,6 +712,76 @@ public class CustomerOrderController {
             this.customerNote = customerNote;
         }
     }
+
+    public static class ReceiveReq {
+        private Long shipmentId;
+        private List<ReceiveItem> items;
+
+        public Long getShipmentId() {
+            return shipmentId;
+        }
+
+        public void setShipmentId(Long shipmentId) {
+            this.shipmentId = shipmentId;
+        }
+
+        public List<ReceiveItem> getItems() {
+            return items;
+        }
+
+        public void setItems(List<ReceiveItem> items) {
+            this.items = items;
+        }
+    }
+
+    public static class ReceiveItem {
+        private Long orderItemId;
+        private Integer quantity;
+
+        public Long getOrderItemId() {
+            return orderItemId;
+        }
+
+        public void setOrderItemId(Long orderItemId) {
+            this.orderItemId = orderItemId;
+        }
+
+        public Integer getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(Integer quantity) {
+            this.quantity = quantity;
+        }
+    }
+
+    public static class ShortageResp {
+        private String bookId;
+        private int quantity;
+        private int currentStock;
+
+        public String getBookId() {
+            return bookId;
+        }
+
+        public void setBookId(String bookId) {
+            this.bookId = bookId;
+        }
+
+        public int getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(int quantity) {
+            this.quantity = quantity;
+        }
+
+        public int getCurrentStock() {
+            return currentStock;
+        }
+
+        public void setCurrentStock(int currentStock) {
+            this.currentStock = currentStock;
+        }
+    }
 }
-
-

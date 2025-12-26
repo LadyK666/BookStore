@@ -103,10 +103,33 @@ public class OrderService {
                 // 5. 更新累积消费
                 customerDao.addTotalConsumption(customer.getCustomerId(), payable);
 
-                // 6. 更新订单状态与支付时间
-                salesOrderDao.updateStatusAndPaymentTime(orderId, "PENDING_SHIPMENT", LocalDateTime.now());
+                // 6. 检查订单是否已全部收货完成
+                List<SalesOrderItem> items = salesOrderDao.findItemsByOrderId(orderId);
+                boolean allReceived = true;
+                for (SalesOrderItem item : items) {
+                    int received = item.getReceivedQuantity() == null ? 0 : item.getReceivedQuantity();
+                    if (received < item.getQuantity()) {
+                        allReceived = false;
+                        break;
+                    }
+                }
+                
+                // 7. 更新订单状态与支付时间
+                // 如果已收货完成，付款后订单状态为COMPLETED；否则根据原状态决定
+                String newStatus;
+                if (allReceived) {
+                    // 已收货完成，付款后订单完成
+                    newStatus = "COMPLETED";
+                } else if ("DELIVERING".equals(originalStatus)) {
+                    // 未收货完成但已在配送中，保持配送中状态
+                    newStatus = "DELIVERING";
+                } else {
+                    // 其他情况（如PENDING_PAYMENT），付款后等待发货
+                    newStatus = "PENDING_SHIPMENT";
+                }
+                salesOrderDao.updateStatusAndPaymentTime(orderId, newStatus, LocalDateTime.now());
 
-                // 7. 若原状态为缺货待确认，则在付款成功后自动生成缺书记录
+                // 8. 若原状态为缺货待确认，则在付款成功后自动生成缺书记录
                 if ("OUT_OF_STOCK_PENDING".equals(originalStatus)) {
                     CustomerOutOfStockRequestDao reqDao = new CustomerOutOfStockRequestDao();
                     OutOfStockRecordDao oosDao = new OutOfStockRecordDao();
@@ -125,7 +148,7 @@ public class OrderService {
                     }
                 }
 
-                // 8. 检查并自动升级信用等级
+                // 9. 检查并自动升级信用等级
                 checkAndUpgradeCreditLevel(customer.getCustomerId());
 
                 conn.commit();
